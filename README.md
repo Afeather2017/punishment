@@ -2,6 +2,10 @@
 
 This repository now hosts a lightweight signaling server and client pair (`holepunch_server.py` / `holepunch_cli.py`) plus the legacy `send_udp.py` helper retained for ad-hoc testing. Together they demonstrate how a central server can keep track of NATed endpoints and broadcast peer lists so every client can hole-punch through NATs.
 
+## Prompt to generate the code
+
+We are going to create hole-punching scripts consisting of a server (srv) and client (cli) Python script. Upon startup, each client continuously sends UDP messages to the server every 5 seconds. The server extracts the IP address and port of each NATed client from these messages. When the server receives a message, it broadcasts the list of all known IP addresses and ports to every client. Upon receiving the broadcasted list, each client attempts to send UDP messages to the IP addresses and ports in that list. Whenever a client receives a message from another client, it prints the sender's IP address, port, and the message content. With only two clients and one server, the setup remains straightforward. During broadcasting, the server should filter out a client's own IP address and port by removing that client's information from the peer list before sending.
+
 ## Files
 
 - `holepunch_server.py`: UDP rendezvous server that records client keep-alives, prunes inactive peers after a configurable timeout, and replies to each keep-alive with a newline-separated list of *other* clients. Each list line follows `IP PORT MESSAGE` to keep things easy to parse.
