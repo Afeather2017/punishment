@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAT穿透打洞动画演示</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #334155;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            color: #94a3b8;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .animation-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        
+        .network-topology {
+            width: 100%;
+            height: 400px;
+            background-color: #1e293b;
+            border-radius: 12px;
+            position: relative;
+            border: 1px solid #334155;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        .device {
+            position: absolute;
+            width: 100px;
+            height: 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        
+        .device-box {
+            width: 100%;
+            height: 100%;
+            border: 2px solid;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .device-label {
+            margin-top: 5px;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+        }
+        
+        .client {
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        .client1 {
+            left: 5%;
+            border-color: #3b82f6;
+        }
+        
+        .client1 .device-box {
+            background-color: rgba(59, 130, 246, 0.1);
+            border-color: #3b82f6;
+            color: #60a5fa;
+        }
+        
+        .client2 {
+            right: 5%;
+            border-color: #8b5cf6;
+        }
+        
+        .client2 .device-box {
+            background-color: rgba(139, 92, 246, 0.1);
+            border-color: #8b5cf6;
+            color: #a78bfa;
+        }
+        
+        .nat {
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        .nat1 {
+            left: 20%;
+            border-color: #10b981;
+        }
+        
+        .nat1 .device-box {
+            background-color: rgba(16, 185, 129, 0.1);
+            border-color: #10b981;
+            color: #34d399;
+        }
+        
+        .nat2 {
+            right: 20%;
+            border-color: #f59e0b;
+        }
+        
+        .nat2 .device-box {
+            background-color: rgba(245, 158, 11, 0.1);
+            border-color: #f59e0b;
+            color: #fbbf24;
+        }
+        
+        .server {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-color: #ef4444;
+        }
+        
+        .server .device-box {
+            background-color: rgba(239, 68, 68, 0.1);
+            border-color: #ef4444;
+            color: #f87171;
+        }
+        
+        .wan {
+            position: absolute;
+            top: 20%;
+            left: 30%;
+            width: 40%;
+            height: 60%;
+            border-radius: 50% 20% 50% 20%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px dashed #8b5cf6;
+            background-color: rgba(139, 92, 246, 0.05);
+            z-index: 5;
+        }
+        
+        .wan-label {
+            font-weight: bold;
+            color: #a78bfa;
+            font-size: 1.2rem;
+        }
+        
+        .connection-line {
+            position: absolute;
+            background-color: #475569;
+            z-index: 1;
+        }
+        
+        .horizontal-line {
+            height: 2px;
+        }
+        
+        .vertical-line {
+            width: 2px;
+        }
+        
+        .packet {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            z-index: 20;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: all 0.5s ease-in-out;
+        }
+        
+        .packet-label {
+            position: absolute;
+            top: -25px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            color: #cbd5e1;
+        }
+        
+        .packet1 {
+            background-color: #3b82f6;
+        }
+        
+        .packet2 {
+            background-color: #8b5cf6;
+        }
+        
+        .packet3 {
+            background-color: #10b981;
+        }
+        
+        .packet4 {
+            background-color: #f59e0b;
+        }
+        
+        .packet5 {
+            background-color: #ec4899;
+        }
+        
+        .packet6 {
+            background-color: #06b6d4;
+        }
+        
+        .ip-port-box {
+            position: absolute;
+            width: 200px;
+            background-color: rgba(30, 41, 59, 0.9);
+            border: 2px solid #475569;
+            border-radius: 8px;
+            padding: 15px;
+            z-index: 30;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.3);
+            transition: all 0.5s ease-in-out;
+            opacity: 0;
+        }
+        
+        .ip-port-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #60a5fa;
+            border-bottom: 1px solid #475569;
+            padding-bottom: 5px;
+        }
+        
+        .ip-port-item {
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .control-btn {
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .control-btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-start {
+            background-color: #10b981;
+            color: white;
+        }
+        
+        .btn-pause {
+            background-color: #f59e0b;
+            color: white;
+        }
+        
+        .btn-reset {
+            background-color: #ef4444;
+            color: white;
+        }
+        
+        .btn-step {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .progress-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto 30px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #334155;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        
+        .progress-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+        
+        .log-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #1e293b;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #334155;
+            height: 200px;
+            overflow-y: auto;
+        }
+        
+        .log-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #60a5fa;
+            border-bottom: 1px solid #475569;
+            padding-bottom: 8px;
+        }
+        
+        .log-entry {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.3);
+            font-size: 0.9rem;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-time {
+            color: #94a3b8;
+            margin-right: 10px;
+        }
+        
+        .log-client1 {
+            color: #60a5fa;
+        }
+        
+        .log-client2 {
+            color: #a78bfa;
+        }
+        
+        .log-server {
+            color: #f87171;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        .phase-indicator {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto 20px;
+        }
+        
+        .phase {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            flex: 1;
+            margin: 0 5px;
+            transition: all 0.3s;
+        }
+        
+        .phase.active {
+            background-color: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            color: #60a5fa;
+        }
+        
+        .phase.completed {
+            background-color: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+        }
+        
+        @media (max-width: 1200px) {
+            .device {
+                width: 90px;
+                height: 50px;
+            }
+            
+            .device-label {
+                font-size: 0.8rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .network-topology {
+                height: 300px;
+            }
+            
+            .device {
+                width: 70px;
+                height: 40px;
+            }
+            
+            .device-box {
+                font-size: 0.8rem;
+            }
+            
+            .device-label {
+                font-size: 0.7rem;
+            }
+            
+            .wan {
+                top: 15%;
+                height: 70%;
+            }
+            
+            .control-btn {
+                padding: 10px 16px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>NAT穿透打洞动画演示</h1>
+            <p class="subtitle">本动画演示了UDP hole-punching过程：两个客户端通过一个服务器交换NAT映射信息，然后建立直接P2P连接</p>
+        </header>
+        
+        <div class="phase-indicator">
+            <div class="phase active" id="phase1">阶段1: 客户端注册</div>
+            <div class="phase" id="phase2">阶段2: 服务器广播</div>
+            <div class="phase" id="phase3">阶段3: 直接通信</div>
+        </div>
+        
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-labels">
+                <span>0%</span>
+                <span>50%</span>
+                <span>100%</span>
+            </div>
+        </div>
+        
+        <div class="animation-container">
+            <div class="network-topology" id="networkTopology">
+                <!-- 网络连接线 -->
+                <div class="connection-line horizontal-line" id="line1"></div>
+                <div class="connection-line horizontal-line" id="line2"></div>
+                <div class="connection-line horizontal-line" id="line3"></div>
+                <div class="connection-line horizontal-line" id="line4"></div>
+                
+                <!-- 广域网 -->
+                <div class="wan">
+                    <div class="wan-label">广域网 (WAN)</div>
+                </div>
+                
+                <!-- 网络设备 -->
+                <div class="device client client1" id="client1">
+                    <div class="device-box">Client 1</div>
+                    <div class="device-label">192.168.1.100:5000</div>
+                </div>
+                
+                <div class="device nat nat1" id="nat1">
+                    <div class="device-box">NAT 1</div>
+                    <div class="device-label">公网IP: 203.0.113.1</div>
+                </div>
+                
+                <div class="device server" id="server">
+                    <div class="device-box">Server</div>
+                    <div class="device-label">公网IP: 198.51.100.10:3478</div>
+                </div>
+                
+                <div class="device nat nat2" id="nat2">
+                    <div class="device-box">NAT 2</div>
+                    <div class="device-label">公网IP: 203.0.113.2</div>
+                </div>
+                
+                <div class="device client client2" id="client2">
+                    <div class="device-box">Client 2</div>
+                    <div class="device-label">192.168.1.200:5000</div>
+                </div>
+                
+                <!-- 数据包 -->
+                <div class="packet packet1" id="packet1">
+                    <div class="packet-label">注册请求</div>
+                    1
+                </div>
+                
+                <div class="packet packet2" id="packet2">
+                    <div class="packet-label">注册请求</div>
+                    2
+                </div>
+                
+                <div class="packet packet3" id="packet3">
+                    <div class="packet-label">客户端列表</div>
+                    3
+                </div>
+                
+                <div class="packet packet4" id="packet4">
+                    <div class="packet-label">客户端列表</div>
+                    4
+                </div>
+                
+                <div class="packet packet5" id="packet5">
+                    <div class="packet-label">P2P消息</div>
+                    5
+                </div>
+                
+                <div class="packet packet6" id="packet6">
+                    <div class="packet-label">P2P消息</div>
+                    6
+                </div>
+                
+                <!-- IP/端口信息框 -->
+                <div class="ip-port-box" id="serverIpBox">
+                    <div class="ip-port-title">服务器已知客户端</div>
+                    <div class="ip-port-item" id="client1Info">Client 1: 203.0.113.1:55000</div>
+                    <div class="ip-port-item" id="client2Info">Client 2: 203.0.113.2:55000</div>
+                </div>
+                
+                <div class="ip-port-box" id="client1IpBox">
+                    <div class="ip-port-title">客户端1收到的列表</div>
+                    <div class="ip-port-item">Client 2: 203.0.113.2:55000</div>
+                </div>
+                
+                <div class="ip-port-box" id="client2IpBox">
+                    <div class="ip-port-title">客户端2收到的列表</div>
+                    <div class="ip-port-item">Client 1: 203.0.113.1:55000</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="control-btn btn-start" id="btnStart">开始动画</button>
+            <button class="control-btn btn-pause" id="btnPause">暂停</button>
+            <button class="control-btn btn-step" id="btnStep">下一步</button>
+            <button class="control-btn btn-reset" id="btnReset">重置</button>
+        </div>
+        
+        <div class="log-container">
+            <div class="log-title">事件日志</div>
+            <div id="eventLog"></div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #3b82f6;"></div>
+                <span>包1: Client 1 → Server</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #8b5cf6;"></div>
+                <span>包2: Client 2 → Server</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #10b981;"></div>
+                <span>包3: Server → Client 1</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #f59e0b;"></div>
+                <span>包4: Server → Client 2</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ec4899;"></div>
+                <span>包5: Client 1 → Client 2</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #06b6d4;"></div>
+                <span>包6: Client 2 → Client 1</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const networkTopology = document.getElementById('networkTopology');
+        const progressFill = document.getElementById('progressFill');
+        const btnStart = document.getElementById('btnStart');
+        const btnPause = document.getElementById('btnPause');
+        const btnStep = document.getElementById('btnStep');
+        const btnReset = document.getElementById('btnReset');
+        const eventLog = document.getElementById('eventLog');
+        const phases = [
+            document.getElementById('phase1'),
+            document.getElementById('phase2'),
+            document.getElementById('phase3')
+        ];
+        
+        // 获取数据包元素
+        const packets = {
+            packet1: document.getElementById('packet1'),
+            packet2: document.getElementById('packet2'),
+            packet3: document.getElementById('packet3'),
+            packet4: document.getElementById('packet4'),
+            packet5: document.getElementById('packet5'),
+            packet6: document.getElementById('packet6')
+        };
+        
+        // 获取IP/端口框元素
+        const serverIpBox = document.getElementById('serverIpBox');
+        const client1IpBox = document.getElementById('client1IpBox');
+        const client2IpBox = document.getElementById('client2IpBox');
+        
+        // 网络设备位置信息
+        const client1Rect = document.getElementById('client1').getBoundingClientRect();
+        const nat1Rect = document.getElementById('nat1').getBoundingClientRect();
+        const serverRect = document.getElementById('server').getBoundingClientRect();
+        const nat2Rect = document.getElementById('nat2').getBoundingClientRect();
+        const client2Rect = document.getElementById('client2').getBoundingClientRect();
+        const containerRect = networkTopology.getBoundingClientRect();
+        
+        // 计算设备在容器内的相对位置
+        const client1Pos = {
+            x: client1Rect.left - containerRect.left + client1Rect.width / 2,
+            y: client1Rect.top - containerRect.top + client1Rect.height / 2
+        };
+        
+        const nat1Pos = {
+            x: nat1Rect.left - containerRect.left + nat1Rect.width / 2,
+            y: nat1Rect.top - containerRect.top + nat1Rect.height / 2
+        };
+        
+        const serverPos = {
+            x: serverRect.left - containerRect.left + serverRect.width / 2,
+            y: serverRect.top - containerRect.top + serverRect.height / 2
+        };
+        
+        const nat2Pos = {
+            x: nat2Rect.left - containerRect.left + nat2Rect.width / 2,
+            y: nat2Rect.top - containerRect.top + nat2Rect.height / 2
+        };
+        
+        const client2Pos = {
+            x: client2Rect.left - containerRect.left + client2Rect.width / 2,
+            y: client2Rect.top - containerRect.top + client2Rect.height / 2
+        };
+        
+        // 绘制连接线
+        function drawConnectionLines() {
+            // 计算连接线的位置
+            const line1 = document.getElementById('line1');
+            const line2 = document.getElementById('line2');
+            const line3 = document.getElementById('line3');
+            const line4 = document.getElementById('line4');
+            
+            // Client1 到 NAT1
+            line1.style.width = Math.abs(nat1Pos.x - client1Pos.x) + 'px';
+            line1.style.left = client1Pos.x + 'px';
+            line1.style.top = client1Pos.y + 'px';
+            
+            // NAT1 到 Server (经过WAN)
+            line2.style.width = Math.abs(serverPos.x - nat1Pos.x) + 'px';
+            line2.style.left = nat1Pos.x + 'px';
+            line2.style.top = nat1Pos.y + 'px';
+            
+            // Server 到 NAT2 (经过WAN)
+            line3.style.width = Math.abs(nat2Pos.x - serverPos.x) + 'px';
+            line3.style.left = serverPos.x + 'px';
+            line3.style.top = serverPos.y + 'px';
+            
+            // NAT2 到 Client2
+            line4.style.width = Math.abs(client2Pos.x - nat2Pos.x) + 'px';
+            line4.style.left = nat2Pos.x + 'px';
+            line4.style.top = nat2Pos.y + 'px';
+        }
+        
+        // 设置IP/端口框的初始位置
+        function setupIpBoxes() {
+            // 服务器IP框
+            serverIpBox.style.left = (serverPos.x - 100) + 'px';
+            serverIpBox.style.top = (serverPos.y - 150) + 'px';
+            
+            // 客户端1 IP框
+            client1IpBox.style.left = (client1Pos.x - 100) + 'px';
+            client1IpBox.style.top = (client1Pos.y - 150) + 'px';
+            
+            // 客户端2 IP框
+            client2IpBox.style.left = (client2Pos.x - 100) + 'px';
+            client2IpBox.style.top = (client2Pos.y - 150) + 'px';
+        }
+        
+        // 设置数据包的初始位置
+        function setupPackets() {
+            // 包1: Client1位置
+            packets.packet1.style.left = (client1Pos.x - 10) + 'px';
+            packets.packet1.style.top = (client1Pos.y - 10) + 'px';
+            
+            // 包2: Client2位置
+            packets.packet2.style.left = (client2Pos.x - 10) + 'px';
+            packets.packet2.style.top = (client2Pos.y - 10) + 'px';
+            
+            // 包3: Server位置
+            packets.packet3.style.left = (serverPos.x - 10) + 'px';
+            packets.packet3.style.top = (serverPos.y - 10) + 'px';
+            packets.packet3.style.opacity = '0';
+            
+            // 包4: Server位置
+            packets.packet4.style.left = (serverPos.x - 10) + 'px';
+            packets.packet4.style.top = (serverPos.y - 10) + 'px';
+            packets.packet4.style.opacity = '0';
+            
+            // 包5: Client1位置
+            packets.packet5.style.left = (client1Pos.x - 10) + 'px';
+            packets.packet5.style.top = (client1Pos.y - 10) + 'px';
+            packets.packet5.style.opacity = '0';
+            
+            // 包6: Client2位置
+            packets.packet6.style.left = (client2Pos.x - 10) + 'px';
+            packets.packet6.style.top = (client2Pos.y - 10) + 'px';
+            packets.packet6.style.opacity = '0';
+        }
+        
+        // 动画状态
+        let animationState = {
+            currentStep: 0,
+            totalSteps: 6,
+            isPlaying: false,
+            intervalId: null,
+            speed: 2000 // 每步持续时间(ms)
+        };
+        
+        // 添加日志条目
+        function addLogEntry(message, className = '') {
+            const now = new Date();
+            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `<span class="log-time">[${timeString}]</span> <span class="${className}">${message}</span>`;
+            
+            eventLog.appendChild(logEntry);
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+        
+        // 更新进度条
+        function updateProgress() {
+            const progress = (animationState.currentStep / animationState.totalSteps) * 100;
+            progressFill.style.width = `${progress}%`;
+            
+            // 更新阶段指示器
+            phases.forEach((phase, index) => {
+                phase.classList.remove('active', 'completed');
+                
+                if (index < Math.floor(animationState.currentStep / 2)) {
+                    phase.classList.add('completed');
+                } else if (index === Math.floor(animationState.currentStep / 2)) {
+                    phase.classList.add('active');
+                }
+            });
+        }
+        
+        // 重置动画
+        function resetAnimation() {
+            animationState.currentStep = 0;
+            animationState.isPlaying = false;
+            
+            if (animationState.intervalId) {
+                clearInterval(animationState.intervalId);
+                animationState.intervalId = null;
+            }
+            
+            // 重置数据包位置
+            setupPackets();
+            
+            // 隐藏所有IP框
+            serverIpBox.style.opacity = '0';
+            client1IpBox.style.opacity = '0';
+            client2IpBox.style.opacity = '0';
+            
+            // 清空日志
+            eventLog.innerHTML = '<div class="log-entry">系统就绪，点击"开始动画"按钮启动演示。</div>';
+            
+            // 重置进度条
+            updateProgress();
+            
+            // 更新按钮状态
+            btnStart.textContent = '开始动画';
+            btnStart.disabled = false;
+            btnPause.disabled = true;
+            
+            addLogEntry('动画已重置', '');
+        }
+        
+        // 移动数据包
+        function movePacket(packet, fromX, fromY, toX, toY, duration, callback) {
+            return new Promise((resolve) => {
+                packet.style.left = `${fromX - 10}px`;
+                packet.style.top = `${fromY - 10}px`;
+                packet.style.opacity = '1';
+                
+                setTimeout(() => {
+                    packet.style.transition = `left ${duration}ms linear, top ${duration}ms linear`;
+                    packet.style.left = `${toX - 10}px`;
+                    packet.style.top = `${toY - 10}px`;
+                    
+                    setTimeout(() => {
+                        if (callback) callback();
+                        resolve();
+                    }, duration);
+                }, 100);
+            });
+        }
+        
+        // 执行动画步骤
+        async function executeStep(step) {
+            switch(step) {
+                case 1: // 包1: Client1 → Server
+                    addLogEntry('客户端1发送注册请求到服务器', 'log-client1');
+                    await movePacket(packets.packet1, client1Pos.x, client1Pos.y, nat1Pos.x, nat1Pos.y, 800);
+                    await movePacket(packets.packet1, nat1Pos.x, nat1Pos.y, serverPos.x, serverPos.y, 1200);
+                    addLogEntry('服务器收到客户端1的注册请求，提取NAT映射: 203.0.113.1:55000', 'log-server');
+                    break;
+                    
+                case 2: // 包2: Client2 → Server
+                    addLogEntry('客户端2发送注册请求到服务器', 'log-client2');
+                    await movePacket(packets.packet2, client2Pos.x, client2Pos.y, nat2Pos.x, nat2Pos.y, 800);
+                    await movePacket(packets.packet2, nat2Pos.x, nat2Pos.y, serverPos.x, serverPos.y, 1200);
+                    addLogEntry('服务器收到客户端2的注册请求，提取NAT映射: 203.0.113.2:55000', 'log-server');
+                    serverIpBox.style.opacity = '1';
+                    break;
+                    
+                case 3: // 包3: Server → Client1 (广播客户端列表)
+                    addLogEntry('服务器向客户端1广播对等端列表(过滤自身)', 'log-server');
+                    packets.packet3.style.left = (serverPos.x - 10) + 'px';
+                    packets.packet3.style.top = (serverPos.y - 10) + 'px';
+                    packets.packet3.style.opacity = '1';
+                    
+                    // 移动IP框到Client1
+                    client1IpBox.style.transition = 'all 1s ease-in-out';
+                    client1IpBox.style.left = (client1Pos.x - 100) + 'px';
+                    client1IpBox.style.top = (client1Pos.y - 150) + 'px';
+                    
+                    await movePacket(packets.packet3, serverPos.x, serverPos.y, nat1Pos.x, nat1Pos.y, 1200);
+                    await movePacket(packets.packet3, nat1Pos.x, nat1Pos.y, client1Pos.x, client1Pos.y, 800);
+                    addLogEntry('客户端1收到对等端列表: 客户端2 (203.0.113.2:55000)', 'log-client1');
+                    client1IpBox.style.opacity = '1';
+                    break;
+                    
+                case 4: // 包4: Server → Client2 (广播客户端列表)
+                    addLogEntry('服务器向客户端2广播对等端列表(过滤自身)', 'log-server');
+                    packets.packet4.style.left = (serverPos.x - 10) + 'px';
+                    packets.packet4.style.top = (serverPos.y - 10) + 'px';
+                    packets.packet4.style.opacity = '1';
+                    
+                    // 移动IP框到Client2
+                    client2IpBox.style.transition = 'all 1s ease-in-out';
+                    client2IpBox.style.left = (client2Pos.x - 100) + 'px';
+                    client2IpBox.style.top = (client2Pos.y - 150) + 'px';
+                    
+                    await movePacket(packets.packet4, serverPos.x, serverPos.y, nat2Pos.x, nat2Pos.y, 1200);
+                    await movePacket(packets.packet4, nat2Pos.x, nat2Pos.y, client2Pos.x, client2Pos.y, 800);
+                    addLogEntry('客户端2收到对等端列表: 客户端1 (203.0.113.1:55000)', 'log-client2');
+                    client2IpBox.style.opacity = '1';
+                    break;
+                    
+                case 5: // 包5: Client1 → Client2 (直接P2P通信)
+                    addLogEntry('客户端1尝试直接连接客户端2 (203.0.113.2:55000)', 'log-client1');
+                    packets.packet5.style.left = (client1Pos.x - 10) + 'px';
+                    packets.packet5.style.top = (client1Pos.y - 10) + 'px';
+                    packets.packet5.style.opacity = '1';
+                    
+                    await movePacket(packets.packet5, client1Pos.x, client1Pos.y, nat1Pos.x, nat1Pos.y, 800);
+                    await movePacket(packets.packet5, nat1Pos.x, nat1Pos.y, nat2Pos.x, nat2Pos.y, 1200);
+                    await movePacket(packets.packet5, nat2Pos.x, nat2Pos.y, client2Pos.x, client2Pos.y, 800);
+                    addLogEntry('客户端2收到来自客户端1的直接消息: "Hello from Client 1!"', 'log-client2');
+                    break;
+                    
+                case 6: // 包6: Client2 → Client1 (直接P2P通信)
+                    addLogEntry('客户端2尝试直接连接客户端1 (203.0.113.1:55000)', 'log-client2');
+                    packets.packet6.style.left = (client2Pos.x - 10) + 'px';
+                    packets.packet6.style.top = (client2Pos.y - 10) + 'px';
+                    packets.packet6.style.opacity = '1';
+                    
+                    await movePacket(packets.packet6, client2Pos.x, client2Pos.y, nat2Pos.x, nat2Pos.y, 800);
+                    await movePacket(packets.packet6, nat2Pos.x, nat2Pos.y, nat1Pos.x, nat1Pos.y, 1200);
+                    await movePacket(packets.packet6, nat1Pos.x, nat1Pos.y, client1Pos.x, client1Pos.y, 800);
+                    addLogEntry('客户端1收到来自客户端2的直接消息: "Hello from Client 2!"', 'log-client1');
+                    addLogEntry('NAT穿透成功! 客户端之间已建立直接P2P连接', 'log-server');
+                    break;
+            }
+            
+            animationState.currentStep = step;
+            updateProgress();
+        }
+        
+        // 下一步动画
+        function nextStep() {
+            if (animationState.currentStep < animationState.totalSteps) {
+                executeStep(animationState.currentStep + 1);
+            } else {
+                // 动画完成
+                animationState.isPlaying = false;
+                if (animationState.intervalId) {
+                    clearInterval(animationState.intervalId);
+                    animationState.intervalId = null;
+                }
+                btnStart.textContent = '重新开始';
+                btnStart.disabled = false;
+                btnPause.disabled = true;
+            }
+        }
+        
+        // 开始动画
+        function startAnimation() {
+            if (animationState.currentStep >= animationState.totalSteps) {
+                resetAnimation();
+            }
+            
+            animationState.isPlaying = true;
+            btnStart.disabled = true;
+            btnPause.disabled = false;
+            
+            if (animationState.intervalId) {
+                clearInterval(animationState.intervalId);
+            }
+            
+            // 如果动画已经完成，从第一步开始
+            if (animationState.currentStep >= animationState.totalSteps) {
+                animationState.currentStep = 0;
+            }
+            
+            // 设置定时器执行下一步
+            animationState.intervalId = setInterval(() => {
+                nextStep();
+                
+                // 如果动画完成，清除定时器
+                if (animationState.currentStep >= animationState.totalSteps) {
+                    clearInterval(animationState.intervalId);
+                    animationState.intervalId = null;
+                    animationState.isPlaying = false;
+                    btnStart.textContent = '重新开始';
+                    btnStart.disabled = false;
+                    btnPause.disabled = true;
+                }
+            }, animationState.speed + 1000); // 加上包移动的时间
+        }
+        
+        // 暂停动画
+        function pauseAnimation() {
+            if (animationState.isPlaying && animationState.intervalId) {
+                clearInterval(animationState.intervalId);
+                animationState.intervalId = null;
+                animationState.isPlaying = false;
+                btnStart.disabled = false;
+                btnPause.disabled = true;
+                btnStart.textContent = '继续';
+                addLogEntry('动画已暂停', '');
+            }
+        }
+        
+        // 初始化
+        function init() {
+            drawConnectionLines();
+            setupIpBoxes();
+            setupPackets();
+            updateProgress();
+            
+            // 事件监听
+            btnStart.addEventListener('click', startAnimation);
+            btnPause.addEventListener('click', pauseAnimation);
+            btnStep.addEventListener('click', () => {
+                if (!animationState.isPlaying && animationState.currentStep < animationState.totalSteps) {
+                    nextStep();
+                }
+            });
+            btnReset.addEventListener('click', resetAnimation);
+            
+            // 初始日志
+            addLogEntry('系统就绪，点击"开始动画"按钮启动演示。', '');
+            addLogEntry('本演示展示UDP hole-punching过程：', '');
+            addLogEntry('1. 客户端向服务器注册，服务器获取NAT映射地址', '');
+            addLogEntry('2. 服务器交换客户端地址信息', '');
+            addLogEntry('3. 客户端尝试直接连接，建立P2P通道', '');
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('load', init);
+        window.addEventListener('resize', () => {
+            // 重新计算位置
+            const containerRect = networkTopology.getBoundingClientRect();
+            const client1Rect = document.getElementById('client1').getBoundingClientRect();
+            const nat1Rect = document.getElementById('nat1').getBoundingClientRect();
+            const serverRect = document.getElementById('server').getBoundingClientRect();
+            const nat2Rect = document.getElementById('nat2').getBoundingClientRect();
+            const client2Rect = document.getElementById('client2').getBoundingClientRect();
+            
+            client1Pos.x = client1Rect.left - containerRect.left + client1Rect.width / 2;
+            client1Pos.y = client1Rect.top - containerRect.top + client1Rect.height / 2;
+            
+            nat1Pos.x = nat1Rect.left - containerRect.left + nat1Rect.width / 2;
+            nat1Pos.y = nat1Rect.top - containerRect.top + nat1Rect.height / 2;
+            
+            serverPos.x = serverRect.left - containerRect.left + serverRect.width / 2;
+            serverPos.y = serverRect.top - containerRect.top + serverRect.height / 2;
+            
+            nat2Pos.x = nat2Rect.left - containerRect.left + nat2Rect.width / 2;
+            nat2Pos.y = nat2Rect.top - containerRect.top + nat2Rect.height / 2;
+            
+            client2Pos.x = client2Rect.left - containerRect.left + client2Rect.width / 2;
+            client2Pos.y = client2Rect.top - containerRect.top + client2Rect.height / 2;
+            
+            drawConnectionLines();
+            setupIpBoxes();
+            
+            // 如果动画没有进行，重新设置包的位置
+            if (!animationState.isPlaying && animationState.currentStep === 0) {
+                setupPackets();
+            }
+        });
+    </script>
+</body>
+</html>
