@@ -10,30 +10,35 @@ NAT / CGNAT).
 
 from __future__ import annotations
 
+import argparse
 import re
 import socket
 import time
 
-SERVER = "<REMOVED>"
-TARGETS = [(SERVER, p) for p in (9997, 9998, 9999)]
 LOCAL_PORT = 54321
 TIMEOUT = 5.0
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="NAT mapping behavior detector")
+    parser.add_argument("server", help="Server IP address")
+    args = parser.parse_args()
+
+    server = args.server
+    targets = [(server, p) for p in (9997, 9998, 9999)]
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", LOCAL_PORT))
     sock.settimeout(0.5)
 
     print(f"Local socket bound on 0.0.0.0:{LOCAL_PORT}")
-    print(f"Sending to {len(TARGETS)} destinations on {SERVER}\n")
+    print(f"Sending to {len(targets)} destinations on {server}\n")
 
-    for target in TARGETS:
+    for target in targets:
         sock.sendto(b"probe", target)
 
     seen: dict[tuple[str, int], str] = {}
     deadline = time.time() + TIMEOUT
-    while time.time() < deadline and len(seen) < len(TARGETS):
+    while time.time() < deadline and len(seen) < len(targets):
         try:
             data, addr = sock.recvfrom(4096)
         except socket.timeout:
@@ -53,9 +58,9 @@ def main() -> None:
         if m:
             ports.append(int(m.group(1)))
 
-    if len(ports) < len(TARGETS):
-        missing = len(TARGETS) - len(ports)
-        print(f"\nOnly {len(ports)}/{len(TARGETS)} responses received ({missing} lost)")
+    if len(ports) < len(targets):
+        missing = len(targets) - len(ports)
+        print(f"\nOnly {len(ports)}/{len(targets)} responses received ({missing} lost)")
 
     print()
     if len(set(ports)) <= 1:
