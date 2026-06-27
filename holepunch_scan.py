@@ -24,6 +24,7 @@ Requires holepunch_server.py running on a public host.
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import socket
 import threading
@@ -33,8 +34,17 @@ DEFAULT_SCAN_RATE = 200.0       # scanner total packets per second
 DEFAULT_REPLICATES = 3          # packets sent per port (loss tolerance)
 DEFAULT_PUNCH_INTERVAL = 0.5    # puncher keep-alive interval (s)
 DEFAULT_KEEPALIVE_INTERVAL = 2.0  # direct-mode NAT keep-alive (s)
+DEFAULT_PAYLOAD_SIZE = 64       # control packets padded to this size with random bytes
 
 MAX_PORT = 65535
+
+
+def make_payload(magic: bytes, size: int) -> bytes:
+    """Wrap a magic-word prefix with random padding so short, repetitive control
+    packets don't get DPI-filtered. Receiver identifies with startswith(magic)."""
+    if size <= len(magic):
+        return magic
+    return magic + os.urandom(size - len(magic))
 
 
 class PortBitmap:
@@ -99,6 +109,9 @@ def parse_args() -> argparse.Namespace:
                    help=f"packets per port for loss tolerance (default {DEFAULT_REPLICATES})")
     p.add_argument("--punch-interval", type=float, default=DEFAULT_PUNCH_INTERVAL,
                    help=f"puncher send interval in seconds (default {DEFAULT_PUNCH_INTERVAL})")
+    p.add_argument("--payload-size", type=int, default=DEFAULT_PAYLOAD_SIZE,
+                   help=f"pad each control packet (HELLO/SCAN/PUNCH/PING/PONG) to N bytes with "
+                        f"random padding (default {DEFAULT_PAYLOAD_SIZE})")
     return p.parse_args()
 
 
@@ -111,8 +124,8 @@ def resolve(target: str) -> tuple[str, int]:
 
 
 def register_and_get_peer(sock: socket.socket, server_addr: tuple[str, int],
-                          my_id: str, timeout: float = 30.0) -> tuple[str, int]:
-    payload = f"HELLO {my_id}".encode()
+                          my_id: str, payload_size: int, timeout: float = 30.0) -> tuple[str, int]:
+    payload = make_payload(f"HELLO {my_id}".encode(), payload_size)
     sock.sendto(payload, server_addr)
     deadline = time.time() + timeout
     sock.settimeout(1.0)
@@ -136,12 +149,12 @@ def register_and_get_peer(sock: socket.socket, server_addr: tuple[str, int],
 
 
 def scanner_mode(server_addr: tuple[str, int], my_id: str,
-                 scan_rate: float, replicates: int) -> None:
+                 scan_rate: float, replicates: int, payload_size: int) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", 0))
     print(f"[scanner] local {sock.getsockname()[0]}:{sock.getsockname()[1]}")
 
-    peer_ip, peer_advertised = register_and_get_peer(sock, server_addr, my_id)
+    peer_ip, peer_advertised = register_and_get_peer(sock, server_addr, my_id, payload_size)
     print(f"[scanner] peer (symmetric) public IP: {peer_ip}")
     print(f"[scanner] note: peer's advertised port {peer_advertised} is its mapping "
           f"to the server only — not what we need to hit")
@@ -170,7 +183,7 @@ def scanner_mode(server_addr: tuple[str, int], my_id: str,
                 if stop.is_set():
                     return
                 try:
-                    sock.sendto(b"SCAN", (peer_ip, port))
+                    sock.sendto(make_payload(b"SCAN", payload_size), (peer_ip, port))
                     total_pkts += 1
                 except OSError:
                     pass
@@ -189,23 +202,23 @@ def scanner_mode(server_addr: tuple[str, int], my_id: str,
         try:
             data, addr = sock.recvfrom(4096)
         except socket.timeout:
-            sock.sendto(f"HELLO {my_id}".encode(), server_addr)
+            sock.sendto(make_payload(f"HELLO {my_id}".encode(), payload_size), server_addr)
             continue
         if addr[0] == peer_ip:
             discovered_port = addr[1]
     stop.set()
 
     print(f"\n[scanner] *** discovered real peer port: {discovered_port} ***\n")
-    direct_loop(sock, peer_ip, discovered_port, "scanner")
+    direct_loop(sock, peer_ip, discovered_port, "scanner", payload_size)
 
 
 def puncher_mode(server_addr: tuple[str, int], my_id: str,
-                 punch_interval: float) -> None:
+                 punch_interval: float, payload_size: int) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", 0))
     print(f"[puncher] local {sock.getsockname()[0]}:{sock.getsockname()[1]}")
 
-    peer_ip, peer_port = register_and_get_peer(sock, server_addr, my_id)
+    peer_ip, peer_port = register_and_get_peer(sock, server_addr, my_id, payload_size)
     print(f"[puncher] peer (cone) at {peer_ip}:{peer_port} (stable)")
     print(f"[puncher] punching every {punch_interval:.2f}s to keep NAT mapping alive...")
 
@@ -214,7 +227,7 @@ def puncher_mode(server_addr: tuple[str, int], my_id: str,
     def punch() -> None:
         while not stop.is_set():
             try:
-                sock.sendto(b"PUNCH", (peer_ip, peer_port))
+                sock.sendto(make_payload(b"PUNCH", payload_size), (peer_ip, peer_port))
             except OSError:
                 pass
             time.sleep(punch_interval)
@@ -227,18 +240,18 @@ def puncher_mode(server_addr: tuple[str, int], my_id: str,
         try:
             data, addr = sock.recvfrom(4096)
         except socket.timeout:
-            sock.sendto(f"HELLO {my_id}".encode(), server_addr)
+            sock.sendto(make_payload(f"HELLO {my_id}".encode(), payload_size), server_addr)
             continue
         if addr[0] == peer_ip:
             found = True
     stop.set()
 
     print(f"\n[puncher] *** scanner found us ***\n")
-    direct_loop(sock, peer_ip, peer_port, "puncher")
+    direct_loop(sock, peer_ip, peer_port, "puncher", payload_size)
 
 
 def direct_loop(sock: socket.socket, peer_ip: str, peer_port: int,
-                role: str) -> None:
+                role: str, payload_size: int) -> None:
     print(f"[{role}] direct channel established with {peer_ip}:{peer_port}")
     print(f"[{role}] keep-alive mode — channel stays open. Type to send, Ctrl-C to exit\n")
 
@@ -248,7 +261,7 @@ def direct_loop(sock: socket.socket, peer_ip: str, peer_port: int,
     def keepalive() -> None:
         while not stop.is_set():
             try:
-                sock.sendto(b"PING", (peer_ip, peer_port))
+                sock.sendto(make_payload(b"PING", payload_size), (peer_ip, peer_port))
                 stats["sent"] += 1
             except OSError:
                 pass
@@ -264,17 +277,17 @@ def direct_loop(sock: socket.socket, peer_ip: str, peer_port: int,
                 break
             if addr[0] != peer_ip:
                 continue
-            text = data.decode("utf-8", errors="replace")
             stats["recv"] += 1
             stats["last_recv"] = time.time()
-            if text == "PING":
+            if data.startswith(b"PING"):
                 try:
-                    sock.sendto(b"PONG", (peer_ip, peer_port))
+                    sock.sendto(make_payload(b"PONG", payload_size), (peer_ip, peer_port))
                 except OSError:
                     pass
                 continue
-            if text in ("PONG", "PUNCH", "SCAN"):
+            if data.startswith((b"PONG", b"PUNCH", b"SCAN")):
                 continue
+            text = data.decode("utf-8", errors="replace")
             print(f"\r[peer] {text}\n> ", end="", flush=True)
 
     def stats_printer() -> None:
@@ -307,9 +320,9 @@ def main() -> None:
     args = parse_args()
     server_addr = resolve(args.server)
     if args.role == "scanner":
-        scanner_mode(server_addr, args.id, args.scan_rate, args.replicates)
+        scanner_mode(server_addr, args.id, args.scan_rate, args.replicates, args.payload_size)
     else:
-        puncher_mode(server_addr, args.id, args.punch_interval)
+        puncher_mode(server_addr, args.id, args.punch_interval, args.payload_size)
 
 
 if __name__ == "__main__":
