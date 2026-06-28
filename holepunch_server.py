@@ -12,6 +12,7 @@ from typing import Dict, Tuple
 DEFAULT_BIND = "0.0.0.0"
 DEFAULT_PORT = 9999
 DEFAULT_TIMEOUT = 30.0
+DEFAULT_BROADCAST_INTERVAL = 3.0
 
 ClientEntry = Tuple[str, float]
 
@@ -27,6 +28,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=DEFAULT_TIMEOUT,
         help="Seconds before a client is removed after its last keep-alive.",
+    )
+    parser.add_argument(
+        "--broadcast-interval",
+        type=float,
+        default=DEFAULT_BROADCAST_INTERVAL,
+        help="Seconds between peer-list broadcasts. Keep-alives are accepted silently between broadcasts.",
     )
     return parser.parse_args()
 
@@ -68,35 +75,42 @@ def main() -> None:
             sys.exit(1)
 
         print(f"Holepunch server listening on {sock.getsockname()[0]}:{sock.getsockname()[1]}")
+        print(f"Broadcasting peer list every {args.broadcast_interval:.1f}s; "
+              f"pruning clients idle > {args.timeout:.0f}s")
+
+        sock.settimeout(0.5)
+        last_broadcast = 0.0
 
         while True:
+            now = time.time()
             try:
                 data, addr = sock.recvfrom(4096)
+            except socket.timeout:
+                pass
             except KeyboardInterrupt:
                 print("Server exiting.")
                 break
             except OSError:
                 continue
-
-            message = normalize_message(data)
-            now = time.time()
-            clients[addr] = (message, now)
-            print(f"Received keep-alive from {addr[0]}:{addr[1]} -> '{message}'")
+            else:
+                message = normalize_message(data)
+                is_new = addr not in clients
+                clients[addr] = (message, now)
+                if is_new:
+                    print(f"New client {addr[0]}:{addr[1]} -> '{message}'")
 
             prune_clients(clients, args.timeout)
 
-            if not clients:
-                continue
-
-            destinations = list(clients.keys())
-            for peer in destinations:
-                try:
-                    payload = build_broadcast(clients, peer)
-                    sock.sendto(payload, peer)
-                except OSError as exc:
-                    print(f"Failed to send peer list to {peer[0]}:{peer[1]} ({exc})", file=sys.stderr)
-
-            print(f"Broadcasted list ({len(destinations)} peers)")
+            if clients and now - last_broadcast >= args.broadcast_interval:
+                destinations = list(clients.keys())
+                for peer in destinations:
+                    try:
+                        payload = build_broadcast(clients, peer)
+                        sock.sendto(payload, peer)
+                    except OSError as exc:
+                        print(f"Failed to send peer list to {peer[0]}:{peer[1]} ({exc})", file=sys.stderr)
+                last_broadcast = now
+                print(f"Broadcasted list ({len(destinations)} peers)")
 
 
 if __name__ == "__main__":

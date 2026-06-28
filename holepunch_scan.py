@@ -33,6 +33,7 @@ import time
 DEFAULT_SCAN_RATE = 200.0       # scanner total packets per second
 DEFAULT_REPLICATES = 3          # packets sent per port (loss tolerance)
 DEFAULT_PUNCH_INTERVAL = 0.5    # puncher keep-alive interval (s)
+DEFAULT_HELLO_INTERVAL = 3.0    # client HELLO retry interval (s); keep >= server's broadcast_interval
 DEFAULT_KEEPALIVE_INTERVAL = 2.0  # direct-mode NAT keep-alive (s)
 DEFAULT_PAYLOAD_SIZE = 64       # control packets padded to this size with random bytes
 
@@ -109,6 +110,9 @@ def parse_args() -> argparse.Namespace:
                    help=f"packets per port for loss tolerance (default {DEFAULT_REPLICATES})")
     p.add_argument("--punch-interval", type=float, default=DEFAULT_PUNCH_INTERVAL,
                    help=f"puncher send interval in seconds (default {DEFAULT_PUNCH_INTERVAL})")
+    p.add_argument("--hello-interval", type=float, default=DEFAULT_HELLO_INTERVAL,
+                   help=f"client HELLO retry interval in seconds (default {DEFAULT_HELLO_INTERVAL}); "
+                        f"keep >= server's --broadcast-interval")
     p.add_argument("--payload-size", type=int, default=DEFAULT_PAYLOAD_SIZE,
                    help=f"pad each control packet (HELLO/SCAN/PUNCH/PING/PONG) to N bytes with "
                         f"random padding (default {DEFAULT_PAYLOAD_SIZE})")
@@ -124,11 +128,12 @@ def resolve(target: str) -> tuple[str, int]:
 
 
 def register_and_get_peer(sock: socket.socket, server_addr: tuple[str, int],
-                          my_id: str, payload_size: int, timeout: float = 30.0) -> tuple[str, int]:
+                          my_id: str, payload_size: int, hello_interval: float,
+                          timeout: float = 30.0) -> tuple[str, int]:
     payload = make_payload(f"HELLO {my_id}".encode(), payload_size)
     sock.sendto(payload, server_addr)
     deadline = time.time() + timeout
-    sock.settimeout(1.0)
+    sock.settimeout(hello_interval)
     while time.time() < deadline:
         try:
             data, addr = sock.recvfrom(4096)
@@ -149,12 +154,13 @@ def register_and_get_peer(sock: socket.socket, server_addr: tuple[str, int],
 
 
 def scanner_mode(server_addr: tuple[str, int], my_id: str,
-                 scan_rate: float, replicates: int, payload_size: int) -> None:
+                 scan_rate: float, replicates: int, payload_size: int,
+                 hello_interval: float) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", 0))
     print(f"[scanner] local {sock.getsockname()[0]}:{sock.getsockname()[1]}")
 
-    peer_ip, peer_advertised = register_and_get_peer(sock, server_addr, my_id, payload_size)
+    peer_ip, peer_advertised = register_and_get_peer(sock, server_addr, my_id, payload_size, hello_interval)
     print(f"[scanner] peer (symmetric) public IP: {peer_ip}")
     print(f"[scanner] note: peer's advertised port {peer_advertised} is its mapping "
           f"to the server only — not what we need to hit")
@@ -196,7 +202,7 @@ def scanner_mode(server_addr: tuple[str, int], my_id: str,
 
     threading.Thread(target=spray, daemon=True).start()
 
-    sock.settimeout(0.5)
+    sock.settimeout(hello_interval)
     discovered_port: int | None = None
     while discovered_port is None:
         try:
@@ -213,12 +219,13 @@ def scanner_mode(server_addr: tuple[str, int], my_id: str,
 
 
 def puncher_mode(server_addr: tuple[str, int], my_id: str,
-                 punch_interval: float, payload_size: int) -> None:
+                 punch_interval: float, payload_size: int,
+                 hello_interval: float) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", 0))
     print(f"[puncher] local {sock.getsockname()[0]}:{sock.getsockname()[1]}")
 
-    peer_ip, peer_port = register_and_get_peer(sock, server_addr, my_id, payload_size)
+    peer_ip, peer_port = register_and_get_peer(sock, server_addr, my_id, payload_size, hello_interval)
     print(f"[puncher] peer (cone) at {peer_ip}:{peer_port} (stable)")
     print(f"[puncher] punching every {punch_interval:.2f}s to keep NAT mapping alive...")
 
@@ -234,7 +241,7 @@ def puncher_mode(server_addr: tuple[str, int], my_id: str,
 
     threading.Thread(target=punch, daemon=True).start()
 
-    sock.settimeout(0.5)
+    sock.settimeout(hello_interval)
     found = False
     while not found:
         try:
@@ -320,9 +327,9 @@ def main() -> None:
     args = parse_args()
     server_addr = resolve(args.server)
     if args.role == "scanner":
-        scanner_mode(server_addr, args.id, args.scan_rate, args.replicates, args.payload_size)
+        scanner_mode(server_addr, args.id, args.scan_rate, args.replicates, args.payload_size, args.hello_interval)
     else:
-        puncher_mode(server_addr, args.id, args.punch_interval, args.payload_size)
+        puncher_mode(server_addr, args.id, args.punch_interval, args.payload_size, args.hello_interval)
 
 
 if __name__ == "__main__":

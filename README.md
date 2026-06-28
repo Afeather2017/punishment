@@ -21,7 +21,7 @@ This repo provides two strategies:
 
 | File | Purpose |
 |---|---|
-| `holepunch_server.py` | Rendezvous server. Records each client's public endpoint and broadcasts the peer list. Used by both client strategies. |
+| `holepunch_server.py` | Rendezvous server. Records each client's public endpoint and broadcasts the peer list on a fixed interval (default 3s). Used by both client strategies. |
 | `holepunch_cli.py` | Simple hole-punching client. One socket per client, sprays packets at peers' advertised endpoints. Works for cone NAT only. |
 | `holepunch_scan.py` | Scanner/puncher client for cone+symmetric NAT pairs. Bitmap-based random port scan with per-port replicate bursts and keep-alive direct mode. |
 | `echo_server.py` | Multi-port UDP echo server used by `nat_detect.py` to probe NAT mapping behavior. Listens on 9997, 9998, 9999. |
@@ -97,6 +97,8 @@ For one peer behind cone NAT (scanner) and one behind symmetric NAT / CGNAT (pun
    ⑤ Both lock onto the discovered endpoint, switch to PING/PONG heartbeat
 ```
 
+**Server broadcast model:** the peer list is broadcast on a fixed timer (default every 3s via `--broadcast-interval`), not on every received HELLO. Keep-alive HELLOs between broadcasts update the client's last-seen timestamp but don't trigger extra broadcasts — this keeps server→client traffic predictable regardless of how many clients are keep-aliving.
+
 The puncher's continuous traffic is essential — symmetric NAT mappings expire after 30s–2min, and once expired, the next send may allocate a **different** public port, invalidating what the scanner already discovered.
 
 ### Usage
@@ -120,7 +122,10 @@ Start order matters: puncher must establish its NAT mapping before the scanner c
 |---|---|---|
 | `--scan-rate` | 200 | Total packets per second from scanner. Higher = faster but more visible. |
 | `--replicates` | 3 | Packets sent per port (loss tolerance). Higher = slower but more reliable. |
-| `--punch-interval` | 0.5 | Seconds between puncher's keep-alive packets. Lower = more stable mapping, more traffic. |
+| `--punch-interval` | 0.5 | Seconds between puncher's keep-alive packets to the peer. Lower = more stable mapping, more traffic. |
+| `--hello-interval` | 3.0 | Seconds between client HELLO keep-alives to the server. Should be ≥ server's `--broadcast-interval`. |
+| Server `--broadcast-interval` | 3.0 | Seconds between peer-list broadcasts. Keep-alives are accepted silently between broadcasts. |
+| Server `--timeout` | 30 | Seconds of silence before a client is pruned from the peer list. |
 
 Effective port-visit rate is `scan_rate / replicates`. A full scan round at defaults (200/3 ≈ 67 ports/s) takes ~16 minutes. In practice the puncher's real port is usually found within the first several thousand ports scanned — validated at ~8000 ports with `--replicates 5` (a few minutes).
 
@@ -132,6 +137,7 @@ Effective port-visit rate is `scan_rate / replicates`. A full scan round at defa
 | Fastest connection | `--scan-rate 500 --replicates 2` (~4 min/round) |
 | Lossy network | `--replicates 5` (sacrifice speed for reliability) |
 | Stealth (avoid IDS) | `--scan-rate 80` (~40 min/round, looks like background traffic) |
+| QoS-friendly (low traffic) | server: `--broadcast-interval 5`; clients: `--hello-interval 5 --scan-rate 50` |
 | Aggressive NAT timeout | `--punch-interval 0.2` (puncher side) |
 
 ### After connection
